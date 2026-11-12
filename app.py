@@ -7,21 +7,22 @@ from protobuf_decoder.protobuf_decoder import Parser
 import data_pb2
 
 # ============================================================
-# ADMIN KEY (đặt env var ADMIN_KEY trên Render, đừng để default)
+# ADMIN KEY
 # ============================================================
 ADMIN_KEY = os.environ.get("ADMIN_KEY", "doi_me_di_ban_oi")
 
 # ============================================================
-# BRANDING (escape Unicode để an toàn khi deploy)
+# BRANDING
 # ============================================================
 BRAND = "\u1D2C\u1D48\u1D50\u2071\u207F \u2803\u1D30\u1D5B\u02E2\u30E1\u1D3A\u02B0\u1D43\u0302\u207F \u02E2\u2071\u207F\u02B0"
 
+
 def branded(data):
-    """Thêm branding vào CUỐI mọi response JSON."""
     if not isinstance(data, dict):
         data = {"data": data}
     data["admin"] = BRAND
     return data
+
 
 if sys.platform.startswith('win'):
     try:
@@ -62,6 +63,26 @@ total_buffed_count = 0
 
 
 # ============================================================
+# JSON helpers — PHẢI ĐỊNH NGHĨA TRƯỚC load_info_account
+# ============================================================
+def load_json(path, default=None):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else (default or {})
+    except Exception:
+        return default or {}
+
+
+def save_json(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception:
+        pass
+
+
+# ============================================================
 # INFO_ACCOUNT management
 # ============================================================
 def load_info_account():
@@ -82,6 +103,9 @@ def save_info_account(uid, password):
 INFO_ACCOUNT = load_info_account()
 
 
+# ============================================================
+# Utilities
+# ============================================================
 def get_now_vn():
     return datetime.now(VN_TZ)
 
@@ -134,23 +158,6 @@ def decode_jwt_uid(token):
     except Exception:
         pass
     return ""
-
-
-def load_json(path, default=None):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else (default or {})
-    except Exception:
-        return default or {}
-
-
-def save_json(path, data):
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-    except Exception:
-        pass
 
 
 def get_last_reset_date():
@@ -384,6 +391,9 @@ def parse_protobuf_result_nested(parsed):
     return {k: v[0] if len(v) == 1 else v for k, v in d.items()}
 
 
+# ============================================================
+# Garena auth
+# ============================================================
 async def request_garena_access(uid, password, session):
     url = "https://100067.connect.garena.com/oauth/guest/token/grant"
     payload = {
@@ -605,7 +615,7 @@ async def refresh_all_tokens_core(force_relogin=False):
                 retry_list.append((u, p))
 
         if retry_list:
-            print(f"[{get_now_vn().strftime('%H:%M:%S')}] Có {len(retry_list)}/{len(acc_items)} tài khoản chưa lấy được token. Tạm bỏ qua, chờ 3s lấy lại lần 2...")
+            print(f"[{get_now_vn().strftime('%H:%M:%S')}] Có {len(retry_list)}/{len(acc_items)} tài khoản chưa lấy được token. Tạm bỏ qua, chờ 5s lấy lại lần 2...")
             await asyncio.sleep(5)
 
             retry_tasks = []
@@ -653,7 +663,7 @@ def trigger_6h_refresh():
     if 290 <= minutes <= 330:
         target_time = now_vn.replace(hour=5, minute=31, second=0, microsecond=0)
         delay_secs = max(1.0, (target_time - now_vn).total_seconds())
-        print(f"[{now_vn.strftime('%H:%M:%S')}] Hoãn refresh token 6h để tránh đụng độ tiến trình Auto-Like 5h sáng (04:50 - 05:30). Thử lại sau {int(delay_secs)} giây (lúc 05:31 AM)...")
+        print(f"[{now_vn.strftime('%H:%M:%S')}] Hoãn refresh token 6h để tránh đụng độ Auto-Like 5h sáng. Thử lại sau {int(delay_secs)} giây...")
         t = threading.Timer(delay_secs, trigger_6h_refresh)
         t.daemon = True
         t.start()
@@ -674,7 +684,7 @@ def trigger_6h_refresh():
 
 def run_daily_450_reset():
     global tokens_data, dabuff_data
-    print(f"[{get_now_vn().strftime('%H:%M:%S')}] === ĐÚNG 4H50 SÁNG VN: RESET TOÀN BỘ COUNT VÀ DANH SÁCH ĐÃ BUFF ===")
+    print(f"[{get_now_vn().strftime('%H:%M:%S')}] === ĐÚNG 4H50 SÁNG VN: RESET COUNT VÀ DANH SÁCH ĐÃ BUFF ===")
     with tokens_lock:
         for t in tokens_data:
             tokens_data[t]["count"] = 0
@@ -993,7 +1003,7 @@ def route_status():
 
 
 # ============================================================
-# ADMIN ENDPOINTS — quản lý INFO_ACCOUNT
+# ADMIN ENDPOINTS
 # ============================================================
 def _check_admin():
     key = request.headers.get("X-Admin-Key") or request.args.get("key")
@@ -1033,13 +1043,12 @@ def route_set_info_account():
         return jsonify(branded({
             "status": "saved_but_login_error",
             "message": str(e),
-            "uid": uid,
-            "note": "Acc đã lưu nhưng test login lỗi. Trên Render Free, file có thể mất khi restart — hãy set env INFO_UID/INFO_PASSWORD để persistent."
+            "uid": uid
         })), 200
 
     return jsonify(branded({
         "status": "success" if ok else "saved_but_login_failed",
-        "message": "Đã cập nhật INFO_ACCOUNT" + (" và login thành công" if ok else " nhưng login thất bại (acc có thể bị ban)"),
+        "message": "Đã cập nhật INFO_ACCOUNT" + (" và login thành công" if ok else " nhưng login thất bại"),
         "uid": uid,
         "info_token_active": bool(info_token)
     })), 200
@@ -1092,8 +1101,10 @@ def after_request(response):
     return response
 
 
+# ============================================================
+# STARTUP — chạy cả với `python app.py` lẫn `gunicorn app:app`
+# ============================================================
 def _startup():
-    """Khởi động background — chạy cả khi `python app.py` lẫn `gunicorn app:app`."""
     try:
         signal.signal(signal.SIGINT, lambda s, f: os._exit(0))
         signal.signal(signal.SIGTERM, lambda s, f: os._exit(0))
@@ -1118,10 +1129,9 @@ def _startup():
     schedule_daily_reset()
 
 
-# Chạy startup ngay khi module được import (cả python app.py lẫn gunicorn app:app)
+# Chạy startup ngay khi module được import (python app.py HOẶC gunicorn app:app)
 _startup()
 
 
 if __name__ == "__main__":
-    # Chỉ dùng khi chạy local: python app.py
     app.run(host="0.0.0.0", port=20000, threaded=True, debug=False)
