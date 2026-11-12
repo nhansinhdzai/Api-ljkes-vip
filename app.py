@@ -6,23 +6,12 @@ from Crypto.Util.Padding import pad
 from protobuf_decoder.protobuf_decoder import Parser
 import data_pb2
 
-# ============================================================
-# ADMIN KEY
-# ============================================================
-ADMIN_KEY = os.environ.get("ADMIN_KEY", "doi_me_di_ban_oi")
+INFO_ACCOUNT = {
+    "uid": "7686450458",
+    "password": "Telegram@amdtsmodz_388331"
+}
 
-# ============================================================
-# BRANDING
-# ============================================================
-BRAND = "\u1D2C\u1D48\u1D50\u2071\u207F \u2803\u1D30\u1D5B\u02E2\u30E1\u1D3A\u02B0\u1D43\u0302\u207F \u02E2\u2071\u207F\u02B0"
-
-
-def branded(data):
-    if not isinstance(data, dict):
-        data = {"data": data}
-    data["admin"] = BRAND
-    return data
-
+#7766520829 | xSex_3486605
 
 if sys.platform.startswith('win'):
     try:
@@ -44,7 +33,6 @@ ACC_FILE = os.path.join(current_dir, "acc.json")
 QDZ_ACC_FILE = os.path.join(current_dir, "qdz_acc.json")
 DABUFF_FILE = os.path.join(current_dir, "dabuff.json")
 STATE_FILE = os.path.join(current_dir, "reset_state.json")
-INFO_ACCOUNT_FILE = os.path.join(current_dir, "info_account.json")
 
 accounts_data = {}
 tokens_data = {}
@@ -56,56 +44,15 @@ accounts_lock = threading.Lock()
 tokens_lock = threading.Lock()
 dabuff_lock = threading.Lock()
 stats_lock = threading.Lock()
-info_account_lock = threading.Lock()
 
 last_refresh_time = 0
 total_buffed_count = 0
 
-
-# ============================================================
-# JSON helpers — PHẢI ĐỊNH NGHĨA TRƯỚC load_info_account
-# ============================================================
-def load_json(path, default=None):
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else (default or {})
-    except Exception:
-        return default or {}
+ADMIN_NAME = "ᴬᵈᵐⁱⁿ ⠃ᴰᵛˢメᴺʰᵃ̂ⁿ ˢⁱⁿʰ"
+DEFAULT_LIKES = 500
+API_KEY = "dvsXnsinh"
 
 
-def save_json(path, data):
-    try:
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4, ensure_ascii=False)
-    except Exception:
-        pass
-
-
-# ============================================================
-# INFO_ACCOUNT management
-# ============================================================
-def load_info_account():
-    default = {
-        "uid": os.environ.get("INFO_UID", "7686450458"),
-        "password": os.environ.get("INFO_PASSWORD", "Telegram@amdtsmodz_388331")
-    }
-    data = load_json(INFO_ACCOUNT_FILE, {})
-    if data.get("uid") and data.get("password"):
-        return {"uid": str(data["uid"]), "password": str(data["password"])}
-    return default
-
-
-def save_info_account(uid, password):
-    save_json(INFO_ACCOUNT_FILE, {"uid": str(uid), "password": str(password)})
-
-
-INFO_ACCOUNT = load_info_account()
-
-
-# ============================================================
-# Utilities
-# ============================================================
 def get_now_vn():
     return datetime.now(VN_TZ)
 
@@ -113,6 +60,7 @@ def get_now_vn():
 def get_cycle_date_vn(dt=None):
     if dt is None:
         dt = get_now_vn()
+    # Chu kỳ ngày mới bắt đầu lúc 04:50 sáng giờ VN
     if dt.hour < 4 or (dt.hour == 4 and dt.minute < 50):
         return (dt.date() - timedelta(days=1)).strftime("%Y-%m-%d")
     return dt.date().strftime("%Y-%m-%d")
@@ -158,6 +106,23 @@ def decode_jwt_uid(token):
     except Exception:
         pass
     return ""
+
+
+def load_json(path, default=None):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else (default or {})
+    except Exception:
+        return default or {}
+
+
+def save_json(path, data):
+    try:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def get_last_reset_date():
@@ -244,11 +209,9 @@ def print_dashboard():
 
     print("\n" + "="*58)
     print(f" TIME (VN): {time_str} | INFO TOKEN: {'OK' if info_token else 'NONE'}")
-    print(f" INFO UID  : {INFO_ACCOUNT.get('uid')}")
     print(f" TOTAL TOKENS   : {total_tok:<5} | MIN COUNT: {min_cnt:<4} | MAX COUNT: {max_cnt:<4} | AVG: {avg_cnt:.1f}")
     print(f" DA BUFF TODAY  : {total_dabuff:<5} | TOTAL BUFF SESSIONS: {total_buffed_count}")
     print(f" NEXT 6H REFRESH: {h_6h:02d}h {m_6h:02d}m | NEXT 4H50 RESET: {h_450:02d}h {m_450:02d}m")
-    print(f" ADMIN: {BRAND}")
     print("="*58 + "\n")
 
 
@@ -391,9 +354,6 @@ def parse_protobuf_result_nested(parsed):
     return {k: v[0] if len(v) == 1 else v for k, v in d.items()}
 
 
-# ============================================================
-# Garena auth
-# ============================================================
 async def request_garena_access(uid, password, session):
     url = "https://100067.connect.garena.com/oauth/guest/token/grant"
     payload = {
@@ -591,6 +551,7 @@ async def refresh_all_tokens_core(force_relogin=False):
     new_tokens_map = {}
     success_uids = set()
     async with aiohttp.ClientSession(timeout=timeout) as session:
+        # Lần 1: Chạy login đồng loạt toàn bộ tài khoản
         tasks = []
         for idx, (u, p) in enumerate(acc_items):
             delay = 0.0 if idx < 200 else (idx - 200) * 0.05
@@ -615,7 +576,7 @@ async def refresh_all_tokens_core(force_relogin=False):
                 retry_list.append((u, p))
 
         if retry_list:
-            print(f"[{get_now_vn().strftime('%H:%M:%S')}] Có {len(retry_list)}/{len(acc_items)} tài khoản chưa lấy được token. Tạm bỏ qua, chờ 5s lấy lại lần 2...")
+            print(f"[{get_now_vn().strftime('%H:%M:%S')}] Có {len(retry_list)}/{len(acc_items)} tài khoản chưa lấy được token. Tạm bỏ qua, chờ 3s lấy lại lần 2...")
             await asyncio.sleep(5)
 
             retry_tasks = []
@@ -660,10 +621,11 @@ async def refresh_all_tokens_core(force_relogin=False):
 def trigger_6h_refresh():
     now_vn = get_now_vn()
     minutes = now_vn.hour * 60 + now_vn.minute
-    if 290 <= minutes <= 330:
+    # Prevent 6h token refresh during daily autolike window (04:50 AM - 05:30 AM Vietnam time GMT+7)
+    if 290 <= minutes <= 330:  # 04:50 (290m) to 05:30 (330m)
         target_time = now_vn.replace(hour=5, minute=31, second=0, microsecond=0)
         delay_secs = max(1.0, (target_time - now_vn).total_seconds())
-        print(f"[{now_vn.strftime('%H:%M:%S')}] Hoãn refresh token 6h để tránh đụng độ Auto-Like 5h sáng. Thử lại sau {int(delay_secs)} giây...")
+        print(f"[{now_vn.strftime('%H:%M:%S')}] Hoãn refresh token 6h để tránh đụng độ tiến trình Auto-Like 5h sáng (04:50 - 05:30). Thử lại sau {int(delay_secs)} giây (lúc 05:31 AM)...")
         t = threading.Timer(delay_secs, trigger_6h_refresh)
         t.daemon = True
         t.start()
@@ -684,7 +646,7 @@ def trigger_6h_refresh():
 
 def run_daily_450_reset():
     global tokens_data, dabuff_data
-    print(f"[{get_now_vn().strftime('%H:%M:%S')}] === ĐÚNG 4H50 SÁNG VN: RESET COUNT VÀ DANH SÁCH ĐÃ BUFF ===")
+    print(f"[{get_now_vn().strftime('%H:%M:%S')}] === ĐÚNG 4H50 SÁNG VN: RESET TOÀN BỘ COUNT VÀ DANH SÁCH ĐÃ BUFF ===")
     with tokens_lock:
         for t in tokens_data:
             tokens_data[t]["count"] = 0
@@ -787,20 +749,24 @@ async def send_single_like(payload, token, session, delay):
         return False
 
 
-async def process_send_likes(target_uid_str, target_likes=60):
+async def process_send_likes(target_uid_str, target_likes=DEFAULT_LIKES):
     global dabuff_data, tokens_data, total_buffed_count
-
-    if target_likes > 60:
-        target_likes = 60
 
     with dabuff_lock:
         if target_uid_str in dabuff_data:
-            return {"Failed": f"UID {target_uid_str} | Đã đạt giới hạn Max Likes hôm nay (đã buff trong ngày)"}, 200
-    timeout = aiohttp.ClientTimeout(total=300)
+            return {
+                "Failed": f"UID {target_uid_str} | Đã đạt giới hạn Max Likes hôm nay (đã buff trong ngày)",
+                "Admin": ADMIN_NAME
+            }, 200
+
+    timeout = aiohttp.ClientTimeout(total=600)
     async with aiohttp.ClientSession(timeout=timeout) as session:
         info_before = await fetch_player_info(int(target_uid_str), session)
         if not info_before or "likes" not in info_before:
-            return {"Failed": f"Tài khoản UID {target_uid_str} không tồn tại hoặc lỗi kết nối Garena"}, 200
+            return {
+                "Failed": f"Tài khoản UID {target_uid_str} không tồn tại hoặc lỗi kết nối Garena",
+                "Admin": ADMIN_NAME
+            }, 200
 
         name = info_before.get("nickname", "Không rõ")
         before_likes = int(info_before["likes"])
@@ -814,7 +780,7 @@ async def process_send_likes(target_uid_str, target_likes=60):
         total_tokens_used = 0
         used_tokens_list = []
         retry_count = 0
-        max_retries = 5
+        max_retries = 20  # Dồn like nhiều vòng để đủ 500
 
         while likes_added < target_likes and retry_count < max_retries:
             missing = target_likes - likes_added
@@ -859,12 +825,16 @@ async def process_send_likes(target_uid_str, target_likes=60):
             total_buffed_count += 1
 
         if likes_added <= 0:
-            return {"Failed": f"UID {target_uid_str} | Tên: {name} | Đã đạt giới hạn Max Likes hôm nay (220 likes/ngày) hoặc tài khoản không nhận like"}, 200
+            return {
+                "Failed": f"Tài khoản {name} đã max likes rồi thg nqu",
+                "Admin": ADMIN_NAME
+            }, 200
 
         after_likes = before_likes + likes_added
         elapsed = time.time() - start_time
 
         return {
+            "Message": "Đã Tăng Like thành công",
             "result": {
                 "User Info": {
                     "Account UID": target_uid_str,
@@ -876,38 +846,29 @@ async def process_send_likes(target_uid_str, target_likes=60):
                 "Likes Info": {
                     "Likes Before": before_likes,
                     "Likes After": after_likes,
-                    "Likes Added": likes_added
+                    "Likes Added": likes_added,
+                    "Target Likes": target_likes
                 },
                 "API": {
                     "speed": f"{elapsed:.1f}s",
                     "Success": True,
-                    "tokens_used": total_tokens_used
+                    "tokens_used": total_tokens_used,
+                    "retries": retry_count
                 }
-            }
+            },
+            "Admin": ADMIN_NAME
         }, 200
-
-
-# ============================================================
-# ROUTES
-# ============================================================
-@app.route("/", methods=["GET"])
-def route_root():
-    return jsonify(branded({
-        "status": "online",
-        "message": "API Free Fire Likes",
-        "endpoints": ["/info?uid=", "/likes?uid=&count=", "/status", "/refresh"]
-    })), 200
 
 
 @app.route("/info", methods=["GET"])
 def route_info():
     u = request.args.get("uid")
     if not u:
-        return jsonify(branded({"err": "Thiếu UID"})), 400
+        return jsonify({"err": "Thiếu UID"}), 400
     try:
         uid_num = int(str(u).strip())
     except ValueError:
-        return jsonify(branded({"err": "UID phải là số"})), 400
+        return jsonify({"err": "UID phải là số"}), 400
 
     async def runner():
         timeout = aiohttp.ClientTimeout(total=15)
@@ -920,35 +881,31 @@ def route_info():
         data = loop.run_until_complete(runner())
         loop.close()
         if data:
-            return jsonify(branded({"status": "success", "data": data})), 200
-        return jsonify(branded({"err": "Không thể lấy thông tin hoặc UID không tồn tại"})), 404
+            return jsonify({"status": "success", "data": data}), 200
+        return jsonify({"err": "Không thể lấy thông tin hoặc UID không tồn tại"}), 404
     except Exception as e:
-        return jsonify(branded({"err": str(e)})), 500
+        return jsonify({"err": str(e)}), 500
 
 
 @app.route("/likes", methods=["GET"])
 def route_likes():
     u = request.args.get("uid")
-    if not u:
-        return jsonify(branded({"err": "Thiếu UID"})), 400
+    k = request.args.get("key")
 
-    MAX_LIKES_PER_BUFF = 60
-    count_arg = request.args.get("count")
-    try:
-        count = int(count_arg) if count_arg is not None else MAX_LIKES_PER_BUFF
-        if count <= 0 or count > MAX_LIKES_PER_BUFF:
-            count = MAX_LIKES_PER_BUFF
-    except ValueError:
-        count = MAX_LIKES_PER_BUFF
+    if not u:
+        return jsonify({"err": "Thiếu UID", "Admin": ADMIN_NAME}), 400
+
+    if k != API_KEY:
+        return jsonify({"err": "Key sai kìa ccho nqu", "Admin": ADMIN_NAME}), 403
 
     try:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
-        res, code = loop.run_until_complete(process_send_likes(str(u).strip(), count))
+        res, code = loop.run_until_complete(process_send_likes(str(u).strip(), DEFAULT_LIKES))
         loop.close()
-        return jsonify(branded(res)), code
+        return jsonify(res), code
     except Exception as e:
-        return jsonify(branded({"err": str(e)})), 500
+        return jsonify({"err": str(e), "Admin": ADMIN_NAME}), 500
 
 
 @app.route("/refresh", methods=["GET"])
@@ -961,13 +918,13 @@ def route_refresh():
         loop.close()
         with tokens_lock:
             total_tok = len(tokens_data)
-        return jsonify(branded({
+        return jsonify({
             "status": "success",
             "message": "Toàn bộ token và info_token đã được làm mới thành công (giữ nguyên count)",
             "total_tokens": total_tok
-        })), 200
+        }), 200
     except Exception as e:
-        return jsonify(branded({"status": "error", "message": str(e)})), 500
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 @app.route("/status", methods=["GET"])
@@ -987,10 +944,9 @@ def route_status():
     sec_450 = int(get_seconds_until_450_am())
     sec_6h = int(get_seconds_until_6h_refresh())
 
-    return jsonify(branded({
+    return jsonify({
         "server_time_vn": get_now_vn().strftime("%Y-%m-%d %H:%M:%S"),
         "info_token_active": bool(info_token),
-        "info_account_uid": INFO_ACCOUNT.get("uid"),
         "total_tokens": total_tok,
         "min_token_count": min_cnt,
         "max_token_count": max_cnt,
@@ -999,118 +955,20 @@ def route_status():
         "total_buff_sessions": total_buffed_count,
         "next_6h_refresh_seconds": sec_6h,
         "next_4h50_reset_seconds": sec_450
-    })), 200
-
-
-# ============================================================
-# ADMIN ENDPOINTS
-# ============================================================
-def _check_admin():
-    key = request.headers.get("X-Admin-Key") or request.args.get("key")
-    return key == ADMIN_KEY
-
-
-@app.route("/set_info_account", methods=["POST"])
-def route_set_info_account():
-    global INFO_ACCOUNT, info_token
-
-    if not _check_admin():
-        return jsonify(branded({"err": "Unauthorized"})), 401
-
-    data = request.get_json(silent=True) or {}
-    uid = str(data.get("uid") or request.args.get("uid") or "").strip()
-    password = str(data.get("password") or request.args.get("password") or "").strip()
-
-    if not uid or not password:
-        return jsonify(branded({"err": "Thiếu uid hoặc password"})), 400
-    if not uid.isdigit():
-        return jsonify(branded({"err": "uid phải là số"})), 400
-
-    with info_account_lock:
-        save_info_account(uid, password)
-        INFO_ACCOUNT = {"uid": uid, "password": password}
-        info_token = None
-
-    async def test_login():
-        return await refresh_info_token()
-
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        ok = loop.run_until_complete(test_login())
-        loop.close()
-    except Exception as e:
-        return jsonify(branded({
-            "status": "saved_but_login_error",
-            "message": str(e),
-            "uid": uid
-        })), 200
-
-    return jsonify(branded({
-        "status": "success" if ok else "saved_but_login_failed",
-        "message": "Đã cập nhật INFO_ACCOUNT" + (" và login thành công" if ok else " nhưng login thất bại"),
-        "uid": uid,
-        "info_token_active": bool(info_token)
-    })), 200
-
-
-@app.route("/get_info_account", methods=["GET"])
-def route_get_info_account():
-    if not _check_admin():
-        return jsonify(branded({"err": "Unauthorized"})), 401
-
-    pwd = INFO_ACCOUNT.get("password", "")
-    if len(pwd) > 6:
-        masked = pwd[:3] + "*" * (len(pwd) - 6) + pwd[-3:]
-    else:
-        masked = "***"
-
-    return jsonify(branded({
-        "uid": INFO_ACCOUNT.get("uid"),
-        "password_masked": masked,
-        "info_token_active": bool(info_token)
-    })), 200
-
-
-@app.route("/refresh_info_token", methods=["GET", "POST"])
-def route_refresh_info_token():
-    global info_token
-    if not _check_admin():
-        return jsonify(branded({"err": "Unauthorized"})), 401
-
-    info_token = None
-
-    async def runner():
-        return await refresh_info_token()
-
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        ok = loop.run_until_complete(runner())
-        loop.close()
-        return jsonify(branded({"status": "success" if ok else "failed", "info_token_active": bool(info_token)})), 200
-    except Exception as e:
-        return jsonify(branded({"status": "error", "message": str(e)})), 500
+    }), 200
 
 
 @app.after_request
 def after_request(response):
     response.headers.add('Access-Control-Allow-Origin', '*')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Admin-Key')
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
 
 
-# ============================================================
-# STARTUP — chạy cả với `python app.py` lẫn `gunicorn app:app`
-# ============================================================
-def _startup():
-    try:
-        signal.signal(signal.SIGINT, lambda s, f: os._exit(0))
-        signal.signal(signal.SIGTERM, lambda s, f: os._exit(0))
-    except Exception:
-        pass
-
+if __name__ == "__main__":
+    signal.signal(signal.SIGINT, lambda s, f: os._exit(0))
+    signal.signal(signal.SIGTERM, lambda s, f: os._exit(0))
     load_all_files()
     check_and_apply_daily_reset()
 
@@ -1120,7 +978,8 @@ def _startup():
         loop.run_until_complete(refresh_all_tokens_core())
         loop.close()
 
-    threading.Thread(target=start_background, daemon=True).start()
+    t_bg = threading.Thread(target=start_background, daemon=True)
+    t_bg.start()
 
     t_6h = threading.Timer(21600, trigger_6h_refresh)
     t_6h.daemon = True
@@ -1128,10 +987,7 @@ def _startup():
 
     schedule_daily_reset()
 
-
-# Chạy startup ngay khi module được import (python app.py HOẶC gunicorn app:app)
-_startup()
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=20000, threaded=True, debug=False)
+    try:
+        app.run(host="0.0.0.0", port=20000, threaded=True, debug=False)
+    except (KeyboardInterrupt, SystemExit):
+        os._exit(0)
