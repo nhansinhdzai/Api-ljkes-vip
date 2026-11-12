@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+info_account.json
+qdz_acc.json
+dabuff.json
+reset_state.json
+.env
