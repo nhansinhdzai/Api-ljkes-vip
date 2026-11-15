@@ -14,7 +14,7 @@ ADMIN_KEY = os.environ.get("ADMIN_KEY", "doi_me_di_ban_oi")
 # ============================================================
 # BRANDING
 # ============================================================
-BRAND = "\u1D2C\u1D48\u1D50\u2071\u207F \u2803\u1D30\u1D5B\u02E2\u30E1\u1D3A\u02B0\u1D43\u0302\u207F \u02E2\u2071\u207F\u02B0"
+BRAND = "Tele : @dzaicuto"
 
 def branded(data):
     if not isinstance(data, dict):
@@ -38,7 +38,7 @@ VN_TZ = timezone(timedelta(hours=7))
 app = Flask(__name__)
 
 # ============================================================
-# DATA DIRECTORY (Tự động nhận Volume /data nếu có, không thì dùng thư mục hiện tại)
+# DATA DIRECTORY (Tự động nhận Volume /data nếu có)
 # ============================================================
 DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
 if not os.path.exists(DATA_DIR):
@@ -570,12 +570,11 @@ async def refresh_all_tokens_core(force_relogin=False):
         print_dashboard()
         return
 
-    timeout = aiohttp.ClientTimeout(total=300) # Tăng timeout cho 700 acc
+    timeout = aiohttp.ClientTimeout(total=300)
     new_tokens_map = {}
     success_uids = set()
     
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        # CHỐNG TRÀN RAM: Chia nhỏ 700 acc thành từng đợt 50 acc
         CHUNK_SIZE = 50
         for i in range(0, len(acc_items), CHUNK_SIZE):
             chunk = acc_items[i:i+CHUNK_SIZE]
@@ -583,7 +582,7 @@ async def refresh_all_tokens_core(force_relogin=False):
             
             tasks = []
             for idx, (u, p) in enumerate(chunk):
-                delay = idx * 0.1 # Delay nhẹ để tránh bị Garena đánh dấu bot
+                delay = idx * 0.1
                 tasks.append(login_single_account(u, p, session, delay))
 
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -605,7 +604,7 @@ async def refresh_all_tokens_core(force_relogin=False):
                     retry_list.append((u, p))
 
             if retry_list:
-                await asyncio.sleep(2) # Nghỉ 2s trước khi thử lại đợt này
+                await asyncio.sleep(2)
                 retry_tasks = []
                 for idx, (u, p) in enumerate(retry_list):
                     retry_tasks.append(login_single_account(u, p, session, idx * 0.1))
@@ -625,7 +624,6 @@ async def refresh_all_tokens_core(force_relogin=False):
                         }
                         success_uids.add(u_str)
 
-                # Giữ lại token cũ cho những acc vẫn fail
                 for u, p in retry_list:
                     u_str = str(u).strip()
                     if u_str not in success_uids:
@@ -634,7 +632,6 @@ async def refresh_all_tokens_core(force_relogin=False):
                                 new_tokens_map[old_t] = old_v
                                 break
             
-            # Nghỉ 1 giây trước khi sang đợt tiếp theo để nhả RAM
             await asyncio.sleep(1)
 
     with tokens_lock:
@@ -770,9 +767,8 @@ async def send_single_like(payload, token, session, delay):
 async def process_send_likes(target_uid_str, target_likes=60):
     global dabuff_data, tokens_data, total_buffed_count
 
-    if target_likes > 60:
-        target_likes = 60
-
+    # Đã bỏ giới hạn 60 like
+    
     with dabuff_lock:
         if target_uid_str in dabuff_data:
             return {"Failed": f"UID {target_uid_str} | Đã đạt giới hạn Max Likes hôm nay (đã buff trong ngày)"}, 200
@@ -909,14 +905,19 @@ def route_likes():
     if not u:
         return jsonify(branded({"err": "Thiếu UID"})), 400
 
-    MAX_LIKES_PER_BUFF = 60
+    # Đã bỏ giới hạn 60 like, tự động lấy tổng token nếu không truyền count
     count_arg = request.args.get("count")
-    try:
-        count = int(count_arg) if count_arg is not None else MAX_LIKES_PER_BUFF
-        if count <= 0 or count > MAX_LIKES_PER_BUFF:
-            count = MAX_LIKES_PER_BUFF
-    except ValueError:
-        count = MAX_LIKES_PER_BUFF
+    
+    if count_arg is not None:
+        try:
+            count = int(count_arg)
+            if count <= 0:
+                return jsonify(branded({"err": "Số lượng phải lớn hơn 0"})), 400
+        except ValueError:
+            return jsonify(branded({"err": "Count phải là số"})), 400
+    else:
+        with tokens_lock:
+            count = len(tokens_data)
 
     try:
         loop = asyncio.new_event_loop()
@@ -930,20 +931,22 @@ def route_likes():
 @app.route("/refresh", methods=["GET"])
 @app.route("/rs", methods=["GET"])
 def route_refresh():
-    try:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        loop.run_until_complete(refresh_all_tokens_core(force_relogin=True))
-        loop.close()
-        with tokens_lock:
-            total_tok = len(tokens_data)
-        return jsonify(branded({
-            "status": "success",
-            "message": "Toàn bộ token và info_token đã được làm mới thành công (giữ nguyên count)",
-            "total_tokens": total_tok
-        })), 200
-    except Exception as e:
-        return jsonify(branded({"status": "error", "message": str(e)})), 500
+    # Chạy ngầm thay vì bắt trình duyệt chờ
+    def background_refresh():
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(refresh_all_tokens_core(force_relogin=True))
+            loop.close()
+        except Exception as e:
+            print(f"Lỗi background refresh: {e}")
+            
+    threading.Thread(target=background_refresh, daemon=True).start()
+    
+    return jsonify(branded({
+        "status": "processing",
+        "message": "Hệ thống đang chạy ngầm để login 700 acc. Vui lòng đợi 3-5 phút và kiểm tra lại bằng link /status"
+    })), 200
 
 @app.route("/status", methods=["GET"])
 def route_status():
