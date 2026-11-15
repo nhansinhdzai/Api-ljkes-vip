@@ -9,20 +9,18 @@ import data_pb2
 # ============================================================
 # ADMIN KEY
 # ============================================================
-ADMIN_KEY = os.environ.get("ADMIN_KEY", "vanhinhngu")
+ADMIN_KEY = os.environ.get("ADMIN_KEY", "doi_me_di_ban_oi")
 
 # ============================================================
 # BRANDING
 # ============================================================
 BRAND = "\u1D2C\u1D48\u1D50\u2071\u207F \u2803\u1D30\u1D5B\u02E2\u30E1\u1D3A\u02B0\u1D43\u0302\u207F \u02E2\u2071\u207F\u02B0"
 
-
 def branded(data):
     if not isinstance(data, dict):
         data = {"data": data}
     data["admin"] = BRAND
     return data
-
 
 if sys.platform.startswith('win'):
     try:
@@ -40,12 +38,11 @@ VN_TZ = timezone(timedelta(hours=7))
 app = Flask(__name__)
 
 # ============================================================
-# DATA DIRECTORY (Railway Volume)
+# DATA DIRECTORY (Tự động nhận Volume /data nếu có, không thì dùng thư mục hiện tại)
 # ============================================================
-# Nếu có Railway Volume, set env DATA_DIR=/data
-# Nếu không, dùng thư mục hiện tại (dữ liệu sẽ mất khi restart)
 DATA_DIR = os.environ.get("DATA_DIR", os.path.dirname(os.path.abspath(__file__)))
-os.makedirs(DATA_DIR, exist_ok=True)
+if not os.path.exists(DATA_DIR):
+    os.makedirs(DATA_DIR, exist_ok=True)
 
 ACC_FILE = os.path.join(DATA_DIR, "acc.json")
 QDZ_ACC_FILE = os.path.join(DATA_DIR, "qdz_acc.json")
@@ -68,7 +65,6 @@ info_account_lock = threading.Lock()
 last_refresh_time = 0
 total_buffed_count = 0
 
-
 # ============================================================
 # JSON helpers
 # ============================================================
@@ -80,7 +76,6 @@ def load_json(path, default=None):
     except Exception:
         return default or {}
 
-
 def save_json(path, data):
     try:
         with open(path, "w", encoding="utf-8") as f:
@@ -88,6 +83,14 @@ def save_json(path, data):
     except Exception:
         pass
 
+# Tự động tạo file rỗng nếu chưa có để tránh lỗi crash
+for file_path in [ACC_FILE, QDZ_ACC_FILE, DABUFF_FILE, STATE_FILE, INFO_ACCOUNT_FILE]:
+    if not os.path.exists(file_path):
+        with open(file_path, "w", encoding="utf-8") as f:
+            if "acc.json" in file_path or "info_account" in file_path or "state" in file_path:
+                json.dump({}, f)
+            else:
+                json.dump([], f)
 
 # ============================================================
 # INFO_ACCOUNT management
@@ -102,20 +105,16 @@ def load_info_account():
         return {"uid": str(data["uid"]), "password": str(data["password"])}
     return default
 
-
 def save_info_account(uid, password):
     save_json(INFO_ACCOUNT_FILE, {"uid": str(uid), "password": str(password)})
 
-
 INFO_ACCOUNT = load_info_account()
-
 
 # ============================================================
 # Utilities
 # ============================================================
 def get_now_vn():
     return datetime.now(VN_TZ)
-
 
 def get_cycle_date_vn(dt=None):
     if dt is None:
@@ -124,14 +123,12 @@ def get_cycle_date_vn(dt=None):
         return (dt.date() - timedelta(days=1)).strftime("%Y-%m-%d")
     return dt.date().strftime("%Y-%m-%d")
 
-
 def get_seconds_until_450_am():
     now = get_now_vn()
     target = now.replace(hour=4, minute=50, second=0, microsecond=0)
     if now >= target:
         target += timedelta(days=1)
     return (target - now).total_seconds()
-
 
 def get_seconds_until_6h_refresh():
     global last_refresh_time
@@ -141,7 +138,6 @@ def get_seconds_until_6h_refresh():
     remaining = 21600 - elapsed
     return max(0, remaining)
 
-
 def get_file_md5(path):
     if not os.path.exists(path):
         return ""
@@ -150,7 +146,6 @@ def get_file_md5(path):
             return hashlib.md5(f.read()).hexdigest()
     except Exception:
         return ""
-
 
 def decode_jwt_uid(token):
     if not token or not isinstance(token, str):
@@ -166,17 +161,14 @@ def decode_jwt_uid(token):
         pass
     return ""
 
-
 def get_last_reset_date():
     state = load_json(STATE_FILE, {})
     return state.get("last_reset_date", "")
-
 
 def set_last_reset_date(date_str):
     state = load_json(STATE_FILE, {})
     state["last_reset_date"] = date_str
     save_json(STATE_FILE, state)
-
 
 def load_all_files():
     global accounts_data, tokens_data, dabuff_data, last_acc_hash
@@ -213,7 +205,6 @@ def load_all_files():
     with dabuff_lock:
         dabuff_data = set(str(x) for x in db_list)
 
-
 def save_tokens_file():
     with tokens_lock:
         tok_list = [
@@ -227,12 +218,10 @@ def save_tokens_file():
         ]
     save_json(QDZ_ACC_FILE, tok_list)
 
-
 def save_dabuff_file():
     with dabuff_lock:
         db_list = list(dabuff_data)
     save_json(DABUFF_FILE, db_list)
-
 
 def print_dashboard():
     with tokens_lock:
@@ -258,7 +247,6 @@ def print_dashboard():
     print(f" ADMIN: {BRAND}")
     print("="*58 + "\n")
 
-
 def encode_varint(value):
     out = []
     while True:
@@ -271,18 +259,15 @@ def encode_varint(value):
             break
     return bytes(out)
 
-
 def encode_length_delimited(field_num, data):
     if isinstance(data, str):
         data = data.encode('utf-8')
     tag = (field_num << 3) | 2
     return encode_varint(tag) + encode_varint(len(data)) + data
 
-
 def encode_varint_field(field_num, value):
     tag = (field_num << 3) | 0
     return encode_varint(tag) + encode_varint(value)
-
 
 def create_protobuf_packet(fields):
     packet = bytearray()
@@ -304,7 +289,6 @@ def create_protobuf_packet(fields):
         elif isinstance(value, (str, bytes)):
             packet.extend(encode_length_delimited(field, value))
     return bytes(packet)
-
 
 def decode_protobuf(data):
     pos = 0
@@ -359,11 +343,9 @@ def decode_protobuf(data):
             break
     return fields
 
-
 def aes_encrypt(data):
     cipher = AES.new(AES_KEY, AES.MODE_CBC, AES_IV)
     return cipher.encrypt(pad(data, AES.block_size))
-
 
 def parse_protobuf_result(raw_bytes):
     try:
@@ -383,7 +365,6 @@ def parse_protobuf_result(raw_bytes):
     except Exception:
         return {}
 
-
 def parse_protobuf_result_nested(parsed):
     d = {}
     for r in parsed:
@@ -396,7 +377,6 @@ def parse_protobuf_result_nested(parsed):
             fd = parse_protobuf_result_nested(r.data.results)
         d[r.field].append(fd)
     return {k: v[0] if len(v) == 1 else v for k, v in d.items()}
-
 
 # ============================================================
 # Garena auth
@@ -435,7 +415,6 @@ async def request_garena_access(uid, password, session):
     except Exception:
         pass
     return None, None
-
 
 async def request_game_jwt(access_token, open_id, session):
     fields = {
@@ -522,7 +501,6 @@ async def request_game_jwt(access_token, open_id, session):
         pass
     return None
 
-
 async def login_single_account(uid, password, session, delay=0.0):
     if delay > 0:
         await asyncio.sleep(delay)
@@ -534,7 +512,6 @@ async def login_single_account(uid, password, session, delay=0.0):
         return uid, jwt
     except Exception:
         return uid, None
-
 
 async def refresh_info_token():
     global info_token
@@ -550,7 +527,6 @@ async def refresh_info_token():
             info_token = jwt
             return True
     return False
-
 
 async def refresh_all_tokens_core(force_relogin=False):
     global accounts_data, tokens_data, last_refresh_time, last_acc_hash
@@ -594,75 +570,78 @@ async def refresh_all_tokens_core(force_relogin=False):
         print_dashboard()
         return
 
-    timeout = aiohttp.ClientTimeout(total=120)
+    timeout = aiohttp.ClientTimeout(total=300) # Tăng timeout cho 700 acc
     new_tokens_map = {}
     success_uids = set()
+    
     async with aiohttp.ClientSession(timeout=timeout) as session:
-        tasks = []
-        for idx, (u, p) in enumerate(acc_items):
-            delay = 0.0 if idx < 200 else (idx - 200) * 0.05
-            tasks.append(login_single_account(u, p, session, delay))
+        # CHỐNG TRÀN RAM: Chia nhỏ 700 acc thành từng đợt 50 acc
+        CHUNK_SIZE = 50
+        for i in range(0, len(acc_items), CHUNK_SIZE):
+            chunk = acc_items[i:i+CHUNK_SIZE]
+            print(f"[{get_now_vn().strftime('%H:%M:%S')}] Đang login đợt {i//CHUNK_SIZE + 1}/{(len(acc_items)-1)//CHUNK_SIZE + 1} ({len(chunk)} acc)...")
+            
+            tasks = []
+            for idx, (u, p) in enumerate(chunk):
+                delay = idx * 0.1 # Delay nhẹ để tránh bị Garena đánh dấu bot
+                tasks.append(login_single_account(u, p, session, delay))
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-        now_ts = time.time()
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            now_ts = time.time()
 
-        retry_list = []
-        for (u, p), res in zip(acc_items, results):
-            u_str = str(u).strip()
-            if isinstance(res, tuple) and len(res) >= 2 and res[1]:
-                jwt = res[1]
-                prev_count = uid_counts.get(u_str, 0)
-                new_tokens_map[jwt] = {
-                    "count": prev_count,
-                    "timestamp": now_ts,
-                    "uid": u_str
-                }
-                success_uids.add(u_str)
-            else:
-                retry_list.append((u, p))
-
-        if retry_list:
-            print(f"[{get_now_vn().strftime('%H:%M:%S')}] Có {len(retry_list)}/{len(acc_items)} tài khoản chưa lấy được token. Tạm bỏ qua, chờ 5s lấy lại lần 2...")
-            await asyncio.sleep(5)
-
-            retry_tasks = []
-            for idx, (u, p) in enumerate(retry_list):
-                delay = idx * 0.05
-                retry_tasks.append(login_single_account(u, p, session, delay))
-
-            retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
-            retry_now_ts = time.time()
-            retry_success_count = 0
-
-            for (u, p), res in zip(retry_list, retry_results):
+            retry_list = []
+            for (u, p), res in zip(chunk, results):
                 u_str = str(u).strip()
                 if isinstance(res, tuple) and len(res) >= 2 and res[1]:
                     jwt = res[1]
                     prev_count = uid_counts.get(u_str, 0)
                     new_tokens_map[jwt] = {
                         "count": prev_count,
-                        "timestamp": retry_now_ts,
+                        "timestamp": now_ts,
                         "uid": u_str
                     }
                     success_uids.add(u_str)
-                    retry_success_count += 1
+                else:
+                    retry_list.append((u, p))
 
-            print(f"[{get_now_vn().strftime('%H:%M:%S')}] Thử lại hoàn tất: Thành công thêm {retry_success_count}/{len(retry_list)} tài khoản.")
+            if retry_list:
+                await asyncio.sleep(2) # Nghỉ 2s trước khi thử lại đợt này
+                retry_tasks = []
+                for idx, (u, p) in enumerate(retry_list):
+                    retry_tasks.append(login_single_account(u, p, session, idx * 0.1))
 
-            for u, p in retry_list:
-                u_str = str(u).strip()
-                if u_str not in success_uids:
-                    for old_t, old_v in tokens_data.items():
-                        if (old_v.get("uid") or decode_jwt_uid(old_t)) == u_str:
-                            new_tokens_map[old_t] = old_v
-                            break
+                retry_results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+                retry_now_ts = time.time()
+
+                for (u, p), res in zip(retry_list, retry_results):
+                    u_str = str(u).strip()
+                    if isinstance(res, tuple) and len(res) >= 2 and res[1]:
+                        jwt = res[1]
+                        prev_count = uid_counts.get(u_str, 0)
+                        new_tokens_map[jwt] = {
+                            "count": prev_count,
+                            "timestamp": retry_now_ts,
+                            "uid": u_str
+                        }
+                        success_uids.add(u_str)
+
+                # Giữ lại token cũ cho những acc vẫn fail
+                for u, p in retry_list:
+                    u_str = str(u).strip()
+                    if u_str not in success_uids:
+                        for old_t, old_v in tokens_data.items():
+                            if (old_v.get("uid") or decode_jwt_uid(old_t)) == u_str:
+                                new_tokens_map[old_t] = old_v
+                                break
+            
+            # Nghỉ 1 giây trước khi sang đợt tiếp theo để nhả RAM
+            await asyncio.sleep(1)
 
     with tokens_lock:
         tokens_data = new_tokens_map
     save_tokens_file()
     last_refresh_time = time.time()
     print_dashboard()
-
 
 def trigger_6h_refresh():
     now_vn = get_now_vn()
@@ -688,7 +667,6 @@ def trigger_6h_refresh():
     t.daemon = True
     t.start()
 
-
 def run_daily_450_reset():
     global tokens_data, dabuff_data
     print(f"[{get_now_vn().strftime('%H:%M:%S')}] === ĐÚNG 4H50 SÁNG VN: RESET COUNT VÀ DANH SÁCH ĐÃ BUFF ===")
@@ -705,13 +683,11 @@ def run_daily_450_reset():
     print_dashboard()
     schedule_daily_reset()
 
-
 def schedule_daily_reset():
     delay = get_seconds_until_450_am()
     t = threading.Timer(delay, run_daily_450_reset)
     t.daemon = True
     t.start()
-
 
 def check_and_apply_daily_reset():
     current_cycle = get_cycle_date_vn()
@@ -723,7 +699,6 @@ def check_and_apply_daily_reset():
         run_daily_450_reset()
         return True
     return False
-
 
 async def fetch_player_info(uid_num, session):
     global info_token
@@ -771,7 +746,6 @@ async def fetch_player_info(uid_num, session):
         pass
     return None
 
-
 async def send_single_like(payload, token, session, delay):
     if delay > 0:
         await asyncio.sleep(delay)
@@ -792,7 +766,6 @@ async def send_single_like(payload, token, session, delay):
             return r.status == 200
     except Exception:
         return False
-
 
 async def process_send_likes(target_uid_str, target_likes=60):
     global dabuff_data, tokens_data, total_buffed_count
@@ -893,7 +866,6 @@ async def process_send_likes(target_uid_str, target_likes=60):
             }
         }, 200
 
-
 # ============================================================
 # ROUTES
 # ============================================================
@@ -904,7 +876,6 @@ def route_root():
         "message": "API Free Fire Likes",
         "endpoints": ["/info?uid=", "/likes?uid=&count=", "/status", "/refresh"]
     })), 200
-
 
 @app.route("/info", methods=["GET"])
 def route_info():
@@ -932,7 +903,6 @@ def route_info():
     except Exception as e:
         return jsonify(branded({"err": str(e)})), 500
 
-
 @app.route("/likes", methods=["GET"])
 def route_likes():
     u = request.args.get("uid")
@@ -957,7 +927,6 @@ def route_likes():
     except Exception as e:
         return jsonify(branded({"err": str(e)})), 500
 
-
 @app.route("/refresh", methods=["GET"])
 @app.route("/rs", methods=["GET"])
 def route_refresh():
@@ -975,7 +944,6 @@ def route_refresh():
         })), 200
     except Exception as e:
         return jsonify(branded({"status": "error", "message": str(e)})), 500
-
 
 @app.route("/status", methods=["GET"])
 def route_status():
@@ -1008,7 +976,6 @@ def route_status():
         "next_4h50_reset_seconds": sec_450
     })), 200
 
-
 # ============================================================
 # ADMIN ENDPOINTS
 # ============================================================
@@ -1016,8 +983,7 @@ def _check_admin():
     key = request.headers.get("X-Admin-Key") or request.args.get("key")
     return key == ADMIN_KEY
 
-
-@app.route("/set_info_account", methods=["POST"])
+@app.route("/set_info_account", methods=["POST", "GET"])
 def route_set_info_account():
     global INFO_ACCOUNT, info_token
 
@@ -1060,7 +1026,6 @@ def route_set_info_account():
         "info_token_active": bool(info_token)
     })), 200
 
-
 @app.route("/get_info_account", methods=["GET"])
 def route_get_info_account():
     if not _check_admin():
@@ -1077,7 +1042,6 @@ def route_get_info_account():
         "password_masked": masked,
         "info_token_active": bool(info_token)
     })), 200
-
 
 @app.route("/refresh_info_token", methods=["GET", "POST"])
 def route_refresh_info_token():
@@ -1099,6 +1063,21 @@ def route_refresh_info_token():
     except Exception as e:
         return jsonify(branded({"status": "error", "message": str(e)})), 500
 
+# Route bổ sung để thêm acc nhanh qua link
+@app.route("/add_acc", methods=["GET"])
+def add_acc():
+    if not _check_admin():
+        return jsonify(branded({"err": "Unauthorized"})), 401
+    uid = request.args.get("uid")
+    pwd = request.args.get("pwd")
+    if not uid or not pwd:
+        return jsonify(branded({"err": "Thiếu uid hoặc pwd"})), 400
+    
+    accs = load_json(ACC_FILE, {})
+    accs[str(uid)] = str(pwd)
+    save_json(ACC_FILE, accs)
+    
+    return jsonify(branded({"status": "success", "message": f"Đã thêm acc {uid}", "total": len(accs)})), 200
 
 @app.after_request
 def after_request(response):
@@ -1106,7 +1085,6 @@ def after_request(response):
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Admin-Key')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     return response
-
 
 # ============================================================
 # STARTUP
@@ -1135,9 +1113,7 @@ def _startup():
 
     schedule_daily_reset()
 
-
 _startup()
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
